@@ -1,4 +1,5 @@
 import dash
+import os
 from dash import html, dcc, Input, Output
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
@@ -76,4 +77,5 @@ def update_chart(tab):
     return render_market_trends_chart()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8050))
+    app.run(host="0.0.0.0", port=port, debug=False)
