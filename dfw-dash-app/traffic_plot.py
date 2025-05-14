@@ -1,23 +1,17 @@
 import pandas as pd
 import plotly.express as px
-import dash
-from dash import html, dcc, Input, Output
-
-def load_mock_hourly_traffic():
-    roads = ['I-35', 'US-75', 'Loop 12']
-    hours = list(range(7, 23))
-    data = []
-    for road in roads:
-        for hour in hours:
-            data.append({
-                'Road': road,
-                'Hour': f"{hour}:00",
-                'TrafficVolume': 10000 + (hour - 7) * 1200 + (road == 'US-75') * 1000
-            })
-    return pd.DataFrame(data)
+from dash import dcc
+from live_traffic_data import fetch_traffic_data
 
 def render_traffic_chart():
-    df = load_mock_hourly_traffic()
-    fig = px.line(df, x="Hour", y="TrafficVolume", color="Road",
-                  title="Hourly Traffic Volume by Road (Mock Data)")
+    df = fetch_traffic_data()
+    if df.empty or 'AADT' not in df:
+        return dcc.Graph(figure=px.scatter(title="No traffic data available"))
+
+    # Aggregate AADT by Road Name
+    df = df.dropna(subset=['AADT', 'Road Name'])
+    top_roads = df.groupby('Road Name')['AADT'].mean().sort_values(ascending=False).head(10).reset_index()
+    fig = px.bar(top_roads, x='Road Name', y='AADT',
+                 title='Top 10 Dallas Roads by Average Annual Daily Traffic',
+                 labels={'AADT': 'AADT Volume'})
     return dcc.Graph(figure=fig)
