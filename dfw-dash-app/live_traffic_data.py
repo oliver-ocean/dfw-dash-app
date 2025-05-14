@@ -7,7 +7,7 @@ def fetch_traffic_data():
     response = requests.get(url)
     if response.status_code == 200:
         df = pd.read_csv(StringIO(response.text))
-        df = df[df['County'] == 'Dallas']
+        df = df[df['CNTY_NM'] == 'Dallas']
         return df
     else:
         return pd.DataFrame()
