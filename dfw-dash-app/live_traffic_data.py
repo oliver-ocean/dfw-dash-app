@@ -8,12 +8,12 @@ def standardize_column_names(df):
         # County name variations
         'County_Name': ['CNTY_NM', 'COUNTY_NAME', 'COUNTY', 'CountyName', 'County_Name'],
         # Road name variations
-        'Road Name': ['Road Name', 'ROAD_NAME', 'RD_NAME', 'ROADNAME', 'STREET_NAME'],
+        'Road Name': ['Road Name', 'ROAD_NAME', 'RD_NAME', 'ROADNAME', 'STREET_NAME', 'ON_ROAD'],
         # Traffic count variations
-        'AADT': ['AADT', 'AVG_DAILY_TRAFFIC', 'TRAFFIC_COUNT', 'DailyTraffic'],
+        'AADT': ['AADT', 'AVG_DAILY_TRAFFIC', 'TRAFFIC_COUNT', 'DailyTraffic', 'AADT_RPT_QTY'],
         # Location variations
-        'Latitude': ['Latitude', 'LAT', 'LATITUDE', 'Y'],
-        'Longitude': ['Longitude', 'LONG', 'LON', 'LONGITUDE', 'X']
+        'Latitude': ['Latitude', 'LAT', 'LATITUDE', 'Y', 'y'],
+        'Longitude': ['Longitude', 'LONG', 'LON', 'LONGITUDE', 'X', 'x']
     }
     
     # Create a mapping of actual columns to standardized names
@@ -37,7 +37,14 @@ def fetch_traffic_data():
         response.raise_for_status()  # Raise an exception for bad status codes
         
         df = pd.read_csv(StringIO(response.text))
+        
+        # Print available columns for debugging
+        print("Available columns before standardization:", df.columns.tolist())
+        
         df = standardize_column_names(df)
+        
+        # Print standardized columns for debugging
+        print("Available columns after standardization:", df.columns.tolist())
         
         # Check if required columns exist
         required_columns = ['County_Name', 'Road Name', 'AADT', 'Latitude', 'Longitude']
