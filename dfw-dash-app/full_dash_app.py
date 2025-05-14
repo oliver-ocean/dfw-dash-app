@@ -76,4 +76,4 @@ def update_chart(tab):
     return render_market_trends_chart()
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run(debug=True)
