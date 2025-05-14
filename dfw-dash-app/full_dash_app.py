@@ -18,22 +18,58 @@ traffic_df = fetch_traffic_data()
 
 # Create marker layers from live data
 def create_crime_markers():
-    return [
-        dl.Marker(position=[row['latitude'], row['longitude']],
-                  children=dl.Tooltip(f"{row['nibrs_crime_category']} ({row['date_of_occurrence'][:10]})"))
-        for _, row in crime_df.iterrows()
-    ]
+    if crime_df.empty:
+        return []
+    
+    markers = []
+    for _, row in crime_df.iterrows():
+        tooltip_text = ""
+        if 'nibrs_crime_category' in row and pd.notna(row['nibrs_crime_category']):
+            tooltip_text += str(row['nibrs_crime_category'])
+        if 'date_of_occurrence' in row and pd.notna(row['date_of_occurrence']):
+            if tooltip_text:
+                tooltip_text += " "
+            tooltip_text += f"({str(row['date_of_occurrence'])[:10]})"
+        
+        if not tooltip_text:
+            tooltip_text = "Crime Incident"
+            
+        markers.append(
+            dl.Marker(
+                position=[row['latitude'], row['longitude']],
+                children=dl.Tooltip(tooltip_text)
+            )
+        )
+    return markers
 
 def create_traffic_markers():
-    return [
-        dl.CircleMarker(center=[row['Latitude'], row['Longitude']],
-                        radius=5,
-                        color='red',
-                        fillOpacity=0.7,
-                        children=dl.Tooltip(f"{row['Road Name']} — AADT: {row['AADT']}"))
-        for _, row in traffic_df.iterrows()
-        if pd.notna(row['Latitude']) and pd.notna(row['Longitude'])
-    ]
+    if traffic_df.empty:
+        return []
+    
+    markers = []
+    for _, row in traffic_df.iterrows():
+        if pd.notna(row.get('Latitude')) and pd.notna(row.get('Longitude')):
+            tooltip_text = ""
+            if 'Road Name' in row and pd.notna(row['Road Name']):
+                tooltip_text += str(row['Road Name'])
+            if 'AADT' in row and pd.notna(row['AADT']):
+                if tooltip_text:
+                    tooltip_text += " — "
+                tooltip_text += f"AADT: {row['AADT']}"
+            
+            if not tooltip_text:
+                tooltip_text = "Traffic Point"
+                
+            markers.append(
+                dl.CircleMarker(
+                    center=[row['Latitude'], row['Longitude']],
+                    radius=5,
+                    color='red',
+                    fillOpacity=0.7,
+                    children=dl.Tooltip(tooltip_text)
+                )
+            )
+    return markers
 
 # Map layers
 traffic_layer = dl.LayerGroup(id="traffic-layer", children=create_traffic_markers())
