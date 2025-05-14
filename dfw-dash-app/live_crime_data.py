@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+from datetime import datetime, timedelta
 
 def standardize_column_names(df):
     """Standardize column names based on common variations"""
@@ -28,9 +29,19 @@ def standardize_column_names(df):
     return df
 
 def fetch_crime_data(limit=100):
+    """
+    Fetch crime data from Dallas Open Data Portal
+    Returns empty DataFrame with appropriate columns if fetch fails
+    """
     url = "https://www.dallasopendata.com/resource/qv6i-rri7.json"
+    
+    # Calculate date range for last 30 days
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+    
     params = {
         "$limit": limit,
+        "$where": f"date_of_occurrence >= '{start_date.strftime('%Y-%m-%d')}' AND date_of_occurrence <= '{end_date.strftime('%Y-%m-%d')}'",
         "$order": "date_of_occurrence DESC"
     }
     
@@ -39,6 +50,10 @@ def fetch_crime_data(limit=100):
         response.raise_for_status()  # Raise an exception for bad status codes
         
         data = pd.DataFrame(response.json())
+        if data.empty:
+            print("Warning: No crime data returned from API")
+            return create_empty_crime_df()
+            
         data = standardize_column_names(data)
         
         # Check if required columns exist
@@ -46,9 +61,9 @@ def fetch_crime_data(limit=100):
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
-            print(f"Warning: Missing required columns: {missing_columns}")
+            print(f"Warning: Missing required crime data columns: {missing_columns}")
             print(f"Available columns: {data.columns.tolist()}")
-            return pd.DataFrame()
+            return create_empty_crime_df()
         
         # Convert coordinates to numeric values
         data['latitude'] = pd.to_numeric(data['latitude'], errors='coerce')
@@ -61,8 +76,24 @@ def fetch_crime_data(limit=100):
         # Drop rows with missing required data
         data = data.dropna(subset=['latitude', 'longitude'])
         
+        if data.empty:
+            print("Warning: No valid crime data after cleaning")
+            return create_empty_crime_df()
+            
         return data
         
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error fetching crime data: {str(e)}")
-        return pd.DataFrame()
+        return create_empty_crime_df()
+    except Exception as e:
+        print(f"Unexpected error processing crime data: {str(e)}")
+        return create_empty_crime_df()
+
+def create_empty_crime_df():
+    """Create an empty DataFrame with the expected crime data structure"""
+    return pd.DataFrame({
+        'latitude': [],
+        'longitude': [],
+        'nibrs_crime_category': [],
+        'date_of_occurrence': []
+    })
