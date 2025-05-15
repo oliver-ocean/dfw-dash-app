@@ -186,19 +186,21 @@ class CrimeVisualization:
         DataFrame with columns:
         - latitude: float
         - longitude: float
-        - risk_score: float (0-1 normalized)
+        - risk_score: float (0-1 percentile ranked)
         """
         data = self.db.get_current_heatmap_data()
-        if data is None or data.empty:
+        if data is None or data.empty or 'risk_score' not in data.columns:
             return pd.DataFrame()
             
-        # Ensure risk scores are properly normalized to 0-1 range
-        min_risk = data['risk_score'].min()
-        max_risk = data['risk_score'].max()
-        if min_risk != max_risk:
-            data['risk_score'] = (data['risk_score'] - min_risk) / (max_risk - min_risk)
-        else:
-            data['risk_score'] = 0.5  # Default to middle value if all scores are the same
+        # Calculate percentile rank for risk_score for heatmap intensity
+        if not data['risk_score'].dropna().empty:
+            if data['risk_score'].nunique() > 1:
+                data['risk_score'] = data['risk_score'].rank(pct=True)
+            else: # All non-NaN values are the same
+                # Assign 0.5 percentile to all valid scores if they are identical
+                data.loc[data['risk_score'].notna(), 'risk_score'] = 0.5
+        # If 'risk_score' column was all NaNs or empty, it remains as is,
+        # subsequent layers will handle empty or NaN intensity.
             
         return data
     
