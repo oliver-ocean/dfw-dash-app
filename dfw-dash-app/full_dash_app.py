@@ -93,8 +93,7 @@ map_component = dl.Map(
         dl.TileLayer(),
         traffic_layer,
         price_layer,
-        crime_layer,
-        dl.ClickData(id="click-data")
+        crime_layer
     ],
     style={'width': '100%', 'height': '600px'},
     id="main-map"
@@ -163,12 +162,12 @@ def toggle_map_layers(selected):
 
 @app.callback(
     Output('clicked-location', 'data'),
-    Input('main-map', 'click_lat_lng')
+    Input('main-map', 'click_latLng')
 )
-def store_clicked_location(click_lat_lng):
-    if click_lat_lng is None:
+def store_clicked_location(click_latLng):
+    if click_latLng is None:
         return {'lat': None, 'lon': None}
-    return {'lat': click_lat_lng[0], 'lon': click_lat_lng[1]}
+    return {'lat': click_latLng[0], 'lon': click_latLng[1]}
 
 @app.callback(
     Output("charts-content", "children"),
