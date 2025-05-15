@@ -7,8 +7,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from map_layer import CrimeMapLayer
+from map_layer import CrimeMapLayer, create_crime_layer
+from traffic_layer import TrafficMapLayer, create_traffic_layer
 from crime_visualization import CrimeVisualization
+from crime_plot import render_crime_chart
+from traffic_plot import render_traffic_chart
 
 # Initialize the app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -16,138 +19,107 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 # Initialize visualization systems
 crime_viz = CrimeVisualization(grid_size=50)
 crime_layer = CrimeMapLayer(resolution=50)
+traffic_layer = TrafficMapLayer(resolution=50)
 
-# Update crime data on startup
+# Update data on startup
 crime_layer.update_data()
-
-def create_crime_markers():
-    """Create crime visualization markers"""
-    return crime_layer.get_heatmap_data()
-
-def create_crime_chart(lat, lon):
-    """Create crime trend chart for location"""
-    analysis = crime_layer.get_trend_analysis(lat, lon)
-    if not analysis:
-        return go.Figure()
-        
-    trend_data = analysis['trend']
-    fig = go.Figure()
-    
-    # Add trend line
-    fig.add_trace(go.Scatter(
-        x=[d['month'] for d in trend_data],
-        y=[d['risk_score'] for d in trend_data],
-        name='Risk Score',
-        line=dict(color='red')
-    ))
-    
-    # Update layout
-    fig.update_layout(
-        title='Crime Risk Trend',
-        xaxis_title='Month',
-        yaxis_title='Risk Score',
-        template='plotly_white'
-    )
-    
-    return fig
+traffic_layer.update_data()
 
 # Map layers
-traffic_layer = dl.LayerGroup(id="traffic-layer", children=create_traffic_markers())
-price_layer = dl.LayerGroup(id="price-layer")  # Placeholder for price markers
-crime_layer = dl.LayerGroup(id="crime-layer", children=create_crime_markers())
+base_layer = dl.TileLayer(
+    url='https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png',
+    attribution='&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
+)
+
+crime_heatmap = create_crime_layer()
+traffic_heatmap = create_traffic_layer()
+
+# Layer control options
+overlay_layers = {
+    'Crime Heatmap': crime_heatmap,
+    'Traffic Heatmap': traffic_heatmap
+}
 
 # Map
 map_component = dl.Map(
-    center=[32.78, -97.15],
-    zoom=10,
+    center=[32.78, -96.8],  # Dallas center
+    zoom=11,
     children=[
-        dl.TileLayer(),
-        traffic_layer,
-        price_layer,
-        crime_layer
+        base_layer,
+        dl.LayerGroup(id="heatmap-layers", children=[crime_heatmap, traffic_heatmap]),
+        dl.LayerControl(overlays=overlay_layers, position="topright")
     ],
-    style={'width': '100%', 'height': '600px'},
+    style={'width': '100%', 'height': '70vh'},
     id="main-map"
 )
 
-# Legend
-legend = html.Div([
-    html.H6("Legend"),
-    html.Div([
-        html.Span("Traffic: ", style={'font-weight': 'bold'}),
-        html.Span("Green = Low, Red = High")
-    ]),
-    html.Div([
-        html.Span("Crime: ", style={'font-weight': 'bold'}),
-        html.Span("Blue = Low, Red = High")
-    ])
-], style={'padding': '10px', 'background-color': 'white', 'border-radius': '5px'})
-
-# Toggle controls
-toggle_controls = dbc.Card([
-    html.H5("Select Data Layer"),
-    dbc.RadioItems(
-        options=[
-            {"label": "Traffic", "value": "traffic"},
-            {"label": "Price & Lease", "value": "price"},
-            {"label": "Crime", "value": "crime"}
-        ],
-        value="traffic",
-        id="layer-toggle",
-        inline=True
-    ),
-], body=True)
-
-# Tabs for charts
-tabs = dcc.Tabs(id="charts-tabs", value="traffic", children=[
-    dcc.Tab(label="Traffic Patterns", value="traffic"),
-    dcc.Tab(label="Market Trends", value="market"),
-    dcc.Tab(label="Crime Analysis", value="crime")
-])
-charts_content = html.Div(id="charts-content")
-
-# Store clicked location
-clicked_location = dcc.Store(id='clicked-location', data={'lat': None, 'lon': None})
-
 # Layout
 app.layout = dbc.Container([
-    clicked_location,
-    dbc.Row([dbc.Col(toggle_controls, width=12)]),
     dbc.Row([
-        dbc.Col(map_component, width=9),
-        dbc.Col(legend, width=3)
+        dbc.Col([
+            html.H1("DFW Area Analysis", className="text-center mb-4"),
+            dbc.ButtonGroup([
+                dbc.Button("Crime Data", id="show-crime", n_clicks=0, color="danger", className="me-1"),
+                dbc.Button("Traffic Data", id="show-traffic", n_clicks=0, color="warning", className="me-1")
+            ], className="mb-3"),
+            html.Div([
+                map_component,
+                html.Div(
+                    "Click anywhere on the map to see detailed statistics",
+                    className="text-muted text-center mt-2"
+                )
+            ], className="mb-4"),
+        ], width=12)
     ]),
-    dbc.Row([dbc.Col([tabs, charts_content], width=12)])
+    dbc.Row([
+        dbc.Col([
+            html.Div(id="analysis-content")
+        ], width=12)
+    ])
 ], fluid=True)
 
 # Callbacks
 @app.callback(
-    Output("charts-content", "children"),
-    [Input("charts-tabs", "value"),
-     Input("clicked-location", "data")]
+    Output("heatmap-layers", "children"),
+    [Input("show-crime", "n_clicks"),
+     Input("show-traffic", "n_clicks")]
 )
-def update_charts(tab, location):
-    if not location or location['lat'] is None:
-        return html.Div("Click a location on the map to see detailed analysis")
-        
-    if tab == "crime":
-        fig = create_crime_chart(location['lat'], location['lon'])
-        return dcc.Graph(figure=fig)
-    elif tab == "traffic":
-        # Your existing traffic chart logic
-        return html.Div("Traffic analysis coming soon")
-    else:
-        # Your existing market chart logic
-        return html.Div("Market analysis coming soon")
+def update_visible_layers(crime_clicks, traffic_clicks):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        # Default to showing crime layer
+        return [crime_heatmap]
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    if button_id == "show-crime":
+        return [crime_heatmap]
+    elif button_id == "show-traffic":
+        return [traffic_heatmap]
+    return []
 
 @app.callback(
-    Output("clicked-location", "data"),
-    [Input("main-map", "click_lat_lng")]
+    Output("analysis-content", "children"),
+    [Input("main-map", "click_lat_lng"),
+     Input("show-crime", "n_clicks"),
+     Input("show-traffic", "n_clicks")]
 )
-def store_clicked_location(click_lat_lng):
+def update_analysis(click_lat_lng, crime_clicks, traffic_clicks):
     if click_lat_lng is None:
-        return {'lat': None, 'lon': None}
-    return {'lat': click_lat_lng[0], 'lon': click_lat_lng[1]}
+        return html.Div("Click a location on the map to see detailed analysis")
+    
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return html.Div("Select a data type and click on the map")
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    lat, lon = click_lat_lng
+    
+    if button_id == "show-crime" or (button_id == "main-map" and crime_clicks > traffic_clicks):
+        return render_crime_chart(lat, lon)
+    elif button_id == "show-traffic" or (button_id == "main-map" and traffic_clicks > crime_clicks):
+        return render_traffic_chart(lat, lon)
+    
+    return html.Div("Select a data type to view analysis")
 
 if __name__ == '__main__':
     app.run_server(debug=True) 
