@@ -6,7 +6,7 @@ from typing import List, Tuple, Dict
 def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFrame:
     """
     Calculate weighted traffic values for a grid of points covering the map area.
-    Uses inverse distance weighting for interpolation with log10 transformation.
+    Uses inverse distance weighting for interpolation with percentile-based color scaling.
     """
     if df.empty:
         return pd.DataFrame()
@@ -40,20 +40,15 @@ def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.Data
         'weighted_aadt': weighted_aadt
     })
     
-    # Apply log10 transformation for better color distribution
-    result['log_aadt'] = np.log10(result['weighted_aadt'] + 1)  # Add 1 to handle zeros
-    
-    # Calculate final color scale
-    min_log = result['log_aadt'].min()
-    max_log = result['log_aadt'].max()
-    result['color_scale'] = (result['log_aadt'] - min_log) / (max_log - min_log)
+    # Calculate percentile ranks for color scaling
+    result['color_scale'] = result['weighted_aadt'].rank(pct=True)
     
     return result
 
 def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFrame:
     """
     Calculate weighted crime density for a grid of points covering the map area.
-    Uses inverse distance weighting for interpolation with log10 transformation.
+    Uses inverse distance weighting for interpolation with percentile-based color scaling.
     """
     if df.empty:
         return pd.DataFrame()
@@ -88,13 +83,8 @@ def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFr
         'weighted_crime': weighted_crime
     })
     
-    # Apply log10 transformation for better color distribution
-    result['log_crime'] = np.log10(result['weighted_crime'] + 1)  # Add 1 to handle zeros
-    
-    # Calculate color scale
-    min_log = result['log_crime'].min()
-    max_log = result['log_crime'].max()
-    result['color_scale'] = (result['log_crime'] - min_log) / (max_log - min_log)
+    # Calculate percentile ranks for color scaling
+    result['color_scale'] = result['weighted_crime'].rank(pct=True)
     
     return result
 
