@@ -114,14 +114,14 @@ legend = html.Div([
 
 # Toggle controls
 toggle_controls = dbc.Card([
-    html.H5("Toggle Layers & Views"),
-    dbc.Checklist(
+    html.H5("Select Data Layer"),
+    dbc.RadioItems(
         options=[
             {"label": "Traffic", "value": "traffic"},
             {"label": "Price & Lease", "value": "price"},
             {"label": "Crime", "value": "crime"}
         ],
-        value=["traffic"],  # Default to showing only traffic
+        value="traffic",
         id="layer-toggle",
         inline=True
     ),
@@ -155,9 +155,9 @@ app.layout = dbc.Container([
     Input("layer-toggle", "value")
 )
 def toggle_map_layers(selected):
-    traffic = create_traffic_markers() if "traffic" in selected else []
-    price = [] if "price" in selected else []  # Placeholder for price markers
-    crime = create_crime_markers() if "crime" in selected else []
+    traffic = create_traffic_markers() if selected == "traffic" else []
+    price = [] if selected == "price" else []  # Placeholder for price markers
+    crime = create_crime_markers() if selected == "crime" else []
     return traffic, price, crime
 
 @app.callback(

@@ -16,21 +16,24 @@ def render_traffic_chart(clicked_lat=None, clicked_lon=None):
     if trend_df.empty:
         return dcc.Graph(figure=px.scatter(title="No traffic trend data available"))
 
-    # If a location is clicked, filter for nearby points
-    if clicked_lat is not None and clicked_lon is not None:
-        # Calculate distances to clicked point
-        distances = np.sqrt(
-            (trend_df['Latitude'] - clicked_lat)**2 + 
-            (trend_df['Longitude'] - clicked_lon)**2
-        )
-        # Use stronger distance decay for weighting (distance^4)
-        weights = 1 / (distances**4 + 1e-10)
-        weights = weights / weights.sum()
-        
-        # Sort by distance and take top 5 closest points
-        trend_df['distance'] = distances
-        trend_df['weight'] = weights
-        trend_df = trend_df.nsmallest(5, 'distance')
+    # If no location is clicked, show a message
+    if clicked_lat is None or clicked_lon is None:
+        return dcc.Graph(figure=go.Figure().add_annotation(
+            text="Click a location on the map to see traffic trends",
+            showarrow=False,
+            xref="paper",
+            yref="paper"
+        ))
+
+    # Calculate distances to clicked point
+    distances = np.sqrt(
+        (trend_df['Latitude'] - clicked_lat)**2 + 
+        (trend_df['Longitude'] - clicked_lon)**2
+    )
+    
+    # Get the nearest point
+    nearest_idx = distances.argmin()
+    nearest_point = trend_df.iloc[nearest_idx]
 
     # Get year columns
     year_cols = [col for col in trend_df.columns if col.startswith('year_')]
@@ -39,37 +42,30 @@ def render_traffic_chart(clicked_lat=None, clicked_lon=None):
     # Create line plot
     fig = go.Figure()
 
-    # Add a trace for each location
-    for _, row in trend_df.iterrows():
-        weight = row.get('weight', 1.0)  # Default weight of 1.0 if no click
-        opacity = min(1.0, weight * 5)  # Scale opacity by weight, max at 1.0
-        
-        fig.add_trace(go.Scatter(
-            x=list(range(1, len(year_cols) + 1)),
-            y=[row[col] for col in year_cols],
-            name=row['Road Name'],
-            mode='lines+markers',
-            opacity=opacity,
-            hovertemplate=(
-                "Road: %{text}<br>" +
-                "Year: %{x}<br>" +
-                "AADT: %{y:,.0f}<br>"
-            ),
-            text=[row['Road Name']] * len(year_cols)
-        ))
+    # Add a trace for the nearest location
+    fig.add_trace(go.Scatter(
+        x=list(range(1, len(year_cols) + 1)),
+        y=[nearest_point[col] for col in year_cols],
+        name=nearest_point['Road Name'],
+        mode='lines+markers',
+        line=dict(color='blue', width=2),
+        hovertemplate=(
+            "Road: %{text}<br>" +
+            "Year: %{x}<br>" +
+            "AADT: %{y:,.0f}<br>"
+        ),
+        text=[nearest_point['Road Name']] * len(year_cols)
+    ))
 
     # Update layout
-    title = 'Historical Traffic Trends'
-    if clicked_lat is not None:
-        title += ' (Nearby Selected Location)'
+    title = f'Historical Traffic Trends for {nearest_point["Road Name"]}'
     
     fig.update_layout(
         title=title,
         xaxis_title='Years Back',
         yaxis_title='AADT',
         showlegend=True,
-        legend_title='Road Names',
-        hovermode='closest'
+        hovermode='x unified'
     )
 
     return dcc.Graph(figure=fig)
