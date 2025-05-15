@@ -3,111 +3,46 @@ import numpy as np
 from typing import Dict, List
 from crime_stats_db import CrimeStatsDB
 from datetime import datetime, timedelta
+from crime_visualization import CrimeVisualization
 
 class CrimeMapLayer:
-    """Class to create crime density map layer using pre-computed statistics"""
+    """Handles the crime data layer for the map"""
     
-    def __init__(self, grid_size: int = 100):
-        """Initialize the map layer"""
-        self.stats_db = CrimeStatsDB(grid_size=grid_size)
-        self.update_data()
+    def __init__(self, resolution: int = 100):
+        """Initialize with visualization system"""
+        self.viz = CrimeVisualization(grid_size=resolution)
+        
+    def get_heatmap_data(self):
+        """Get current heatmap data for visualization"""
+        return self.viz.get_heatmap_data()
     
-    def update_data(self):
-        """Update crime statistics database with fresh data"""
-        from live_crime_data import fetch_crime_data
-        
-        # Fetch latest data
-        data = fetch_crime_data()
-        
-        # Update statistics database
-        self.stats_db.update_stats(data)
+    def get_location_details(self, lat: float, lon: float) -> dict:
+        """Get detailed crime statistics for a location"""
+        return self.viz.get_location_stats(lat, lon)
     
-    def get_density_overlay(self) -> List[Dict]:
-        """
-        Get density overlay data for map visualization
-        
-        Returns:
-        --------
-        List of dictionaries containing:
-        - lat: latitude
-        - lon: longitude
-        - color: hex color code
-        - opacity: opacity value (0-1)
-        - weight: point weight
-        - risk_score: crime risk score
-        """
-        # Get current heatmap data
-        heatmap_data = self.stats_db.get_current_heatmap_data()
-        
-        overlay_points = []
-        for _, point in heatmap_data.iterrows():
-            # Use risk score to determine color and opacity
-            color = '#FF0000'  # Red base color
-            opacity = 0.1 + (point['risk_score'] * 0.6)  # Scale opacity from 0.1 to 0.7
-            
-            overlay_points.append({
-                'lat': point['latitude'],
-                'lon': point['longitude'],
-                'color': color,
-                'opacity': opacity,
-                'weight': 2,
-                'risk_score': point['risk_score']
-            })
-        
-        return overlay_points
+    def update_data(self, force: bool = False):
+        """Update the crime data if needed"""
+        self.viz.update_database(force=force)
     
-    def get_location_analysis(self, lat: float, lon: float, radius_km: float = 2.0) -> Dict:
-        """
-        Get detailed analysis for a specific location
-        
-        Parameters:
-        -----------
-        lat : float
-            Latitude of the point
-        lon : float
-            Longitude of the point
-        radius_km : float
-            Radius in kilometers to analyze
-            
-        Returns:
-        --------
-        Dictionary containing detailed risk analysis
-        """
-        # Convert radius from km to degrees (approximately)
-        radius_deg = radius_km / 111.0
-        
-        # Get location statistics from database
-        return self.stats_db.get_location_stats(lat, lon, radius=radius_deg)
+    def get_trend_analysis(self, lat: float, lon: float) -> dict:
+        """Get trend analysis for a location"""
+        return self.viz.get_trend_analysis(lat, lon)
+
+def create_crime_layer(resolution: int = 50):
+    """Create the crime layer for the map"""
+    layer = CrimeMapLayer(resolution=resolution)
     
-    def get_high_risk_markers(self, threshold: float = 0.75) -> List[Dict]:
-        """
-        Get markers for high-risk areas
+    # Update data if needed
+    layer.update_data()
+    
+    # Get heatmap data
+    heatmap_data = layer.get_heatmap_data()
+    
+    if heatmap_data is None or heatmap_data.empty:
+        print("No crime data available for map layer")
+        return []
         
-        Parameters:
-        -----------
-        threshold : float
-            Risk score threshold for high-risk classification
-            
-        Returns:
-        --------
-        List of dictionaries containing marker data for high-risk areas
-        """
-        # Get current heatmap data
-        heatmap_data = self.stats_db.get_current_heatmap_data()
-        high_risk = heatmap_data[heatmap_data['risk_score'] >= threshold]
-        
-        markers = []
-        for _, point in high_risk.iterrows():
-            markers.append({
-                'lat': point['latitude'],
-                'lon': point['longitude'],
-                'color': '#FF0000',
-                'opacity': 0.9,
-                'weight': 3,
-                'risk_score': point['risk_score']
-            })
-        
-        return markers
+    return heatmap_data.to_dict('records')
 
 def test_map_layer():
     """Test the map layer functionality"""
