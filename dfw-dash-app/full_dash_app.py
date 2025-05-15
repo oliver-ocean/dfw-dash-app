@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output
+from dash import html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import pandas as pd
@@ -22,44 +22,21 @@ traffic_df = fetch_traffic_data()
 traffic_grid = calculate_weighted_traffic(traffic_df)
 crime_grid = calculate_weighted_crime(crime_df)
 
-def get_color(scale_value: float) -> str:
-    """Convert scale value (0-1) to color string"""
+def get_color(scale_value: float, data_type: str) -> str:
+    """Convert scale value (0-1) to color string based on data type"""
     if pd.isna(scale_value):
         return '#808080'  # Gray for missing data
     
-    # For traffic: green (low) to red (high)
-    r = int(255 * scale_value)
-    g = int(255 * (1 - scale_value))
-    return f'rgb({r}, {g}, 0)'
-
-def get_crime_color(scale_value: float) -> str:
-    """Convert scale value (0-1) to color string for crime data"""
-    if pd.isna(scale_value):
-        return '#808080'  # Gray for missing data
-    
-    # Blue (low) to red (high) through purple
-    r = int(255 * scale_value)
-    b = int(255 * (1 - scale_value))
-    return f'rgb({r}, 0, {b})'
-
-# Create marker layers from live data
-def create_crime_markers():
-    if crime_grid.empty:
-        return []
-    
-    markers = []
-    for _, row in crime_grid.iterrows():
-        markers.append(
-            dl.CircleMarker(
-                center=[row['Latitude'], row['Longitude']],
-                radius=8,
-                color=get_crime_color(row['color_scale']),
-                fillOpacity=0.7,
-                weight=1,
-                children=dl.Tooltip(f"Crime Density: {row['weighted_crime']:.2f}")
-            )
-        )
-    return markers
+    if data_type == 'traffic':
+        # For traffic: green (low) to red (high)
+        r = int(255 * scale_value)
+        g = int(255 * (1 - scale_value))
+        return f'rgb({r}, {g}, 0)'
+    else:  # crime
+        # Blue (low) to red (high) through purple
+        r = int(255 * scale_value)
+        b = int(255 * (1 - scale_value))
+        return f'rgb({r}, 0, {b})'
 
 def create_traffic_markers():
     if traffic_grid.empty:
@@ -70,11 +47,35 @@ def create_traffic_markers():
         markers.append(
             dl.CircleMarker(
                 center=[row['Latitude'], row['Longitude']],
-                radius=8,
-                color=get_color(row['color_scale']),
-                fillOpacity=0.7,
+                radius=4,
+                color=get_color(row['color_scale'], 'traffic'),
+                fillOpacity=0.4,
                 weight=1,
-                children=dl.Tooltip(f"Traffic Level: {row['weighted_aadt']:,.0f} AADT")
+                children=[
+                    dl.Tooltip(f"Traffic Level: {row['weighted_aadt']:,.0f} AADT"),
+                    dl.Popup(f"Traffic Level: {row['weighted_aadt']:,.0f} AADT")
+                ]
+            )
+        )
+    return markers
+
+def create_crime_markers():
+    if crime_grid.empty:
+        return []
+    
+    markers = []
+    for _, row in crime_grid.iterrows():
+        markers.append(
+            dl.CircleMarker(
+                center=[row['Latitude'], row['Longitude']],
+                radius=4,
+                color=get_color(row['color_scale'], 'crime'),
+                fillOpacity=0.4,
+                weight=1,
+                children=[
+                    dl.Tooltip(f"Crime Density: {row['weighted_crime']:.2f}"),
+                    dl.Popup(f"Crime Density: {row['weighted_crime']:.2f}")
+                ]
             )
         )
     return markers
@@ -85,12 +86,19 @@ price_layer = dl.LayerGroup(id="price-layer")  # Placeholder for price markers
 crime_layer = dl.LayerGroup(id="crime-layer", children=create_crime_markers())
 
 # Map
-map_component = dl.Map(center=[32.9, -97.0], zoom=9, children=[
-    dl.TileLayer(),
-    traffic_layer,
-    price_layer,
-    crime_layer
-], style={'width': '100%', 'height': '600px'}, id="main-map")
+map_component = dl.Map(
+    center=[32.78, -97.15],
+    zoom=10,
+    children=[
+        dl.TileLayer(),
+        traffic_layer,
+        price_layer,
+        crime_layer,
+        dl.ClickData(id="click-data")
+    ],
+    style={'width': '100%', 'height': '600px'},
+    id="main-map"
+)
 
 # Legend
 legend = html.Div([
@@ -114,7 +122,7 @@ toggle_controls = dbc.Card([
             {"label": "Price & Lease", "value": "price"},
             {"label": "Crime", "value": "crime"}
         ],
-        value=["traffic", "price", "crime"],
+        value=["traffic"],  # Default to showing only traffic
         id="layer-toggle",
         inline=True
     ),
@@ -127,8 +135,12 @@ tabs = dcc.Tabs(id="charts-tabs", value="traffic", children=[
 ])
 charts_content = html.Div(id="charts-content")
 
+# Store clicked location
+clicked_location = dcc.Store(id='clicked-location', data={'lat': None, 'lon': None})
+
 # Layout
 app.layout = dbc.Container([
+    clicked_location,
     dbc.Row([dbc.Col(toggle_controls, width=12)]),
     dbc.Row([
         dbc.Col(map_component, width=9),
@@ -145,18 +157,39 @@ app.layout = dbc.Container([
 )
 def toggle_map_layers(selected):
     traffic = create_traffic_markers() if "traffic" in selected else []
-    price = [dl.Marker(position=[32.8, -97.1], children=dl.Tooltip("Lease Marker"))] if "price" in selected else []
+    price = [] if "price" in selected else []  # Placeholder for price markers
     crime = create_crime_markers() if "crime" in selected else []
     return traffic, price, crime
 
 @app.callback(
-    Output("charts-content", "children"),
-    Input("charts-tabs", "value")
+    Output('clicked-location', 'data'),
+    Input('main-map', 'click_lat_lng')
 )
-def update_chart(tab):
-    if tab == "traffic":
-        return render_traffic_chart()
-    return render_market_trends_chart()
+def store_clicked_location(click_lat_lng):
+    if click_lat_lng is None:
+        return {'lat': None, 'lon': None}
+    return {'lat': click_lat_lng[0], 'lon': click_lat_lng[1]}
+
+@app.callback(
+    Output("charts-content", "children"),
+    Input("charts-tabs", "value"),
+    Input("clicked-location", "data"),
+    Input("layer-toggle", "value")
+)
+def update_charts(tab, clicked_location, active_layers):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "No data selected"
+    
+    lat = clicked_location.get('lat')
+    lon = clicked_location.get('lon')
+    
+    if tab == "traffic" and "traffic" in active_layers:
+        return render_traffic_chart(clicked_lat=lat, clicked_lon=lon)
+    elif tab == "market" and "price" in active_layers:
+        return render_market_trends_chart()
+    else:
+        return "Please select a location on the map and ensure the corresponding layer is active"
 
 if __name__ == "__main__":
     import os

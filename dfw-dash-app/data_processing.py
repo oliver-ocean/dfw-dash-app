@@ -6,7 +6,7 @@ from typing import List, Tuple, Dict
 def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFrame:
     """
     Calculate weighted traffic values for a grid of points covering the map area.
-    Uses inverse distance weighting for interpolation.
+    Uses inverse distance weighting for interpolation with log10 transformation.
     """
     if df.empty:
         return pd.DataFrame()
@@ -26,8 +26,8 @@ def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.Data
     # Calculate distances between grid points and data points
     distances = cdist(grid_points, data_points)
     
-    # Calculate weights (inverse distance weighting)
-    weights = 1 / (distances ** 2 + 1e-10)  # Add small constant to avoid division by zero
+    # Calculate weights with stronger distance decay (using distance^4)
+    weights = 1 / (distances ** 4 + 1e-10)  # Add small constant to avoid division by zero
     weights = weights / weights.sum(axis=1, keepdims=True)
     
     # Calculate weighted AADT for each grid point
@@ -40,17 +40,20 @@ def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.Data
         'weighted_aadt': weighted_aadt
     })
     
-    # Calculate color scale (0 to 1, where 0 is lowest traffic and 1 is highest)
-    min_aadt = result['weighted_aadt'].min()
-    max_aadt = result['weighted_aadt'].max()
-    result['color_scale'] = (result['weighted_aadt'] - min_aadt) / (max_aadt - min_aadt)
+    # Apply log10 transformation for better color distribution
+    result['log_aadt'] = np.log10(result['weighted_aadt'] + 1)  # Add 1 to handle zeros
+    
+    # Calculate final color scale
+    min_log = result['log_aadt'].min()
+    max_log = result['log_aadt'].max()
+    result['color_scale'] = (result['log_aadt'] - min_log) / (max_log - min_log)
     
     return result
 
 def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFrame:
     """
     Calculate weighted crime density for a grid of points covering the map area.
-    Uses inverse distance weighting for interpolation.
+    Uses inverse distance weighting for interpolation with log10 transformation.
     """
     if df.empty:
         return pd.DataFrame()
@@ -63,9 +66,6 @@ def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFr
     lon_grid = np.linspace(lon_min, lon_max, grid_size)
     grid_points = np.array([(lat, lon) for lat in lat_grid for lon in lon_grid])
     
-    # Get data points
-    data_points = df[['latitude', 'longitude']].values
-    
     # Count crimes at each location
     crime_counts = df.groupby(['latitude', 'longitude']).size().reset_index(name='count')
     crime_points = crime_counts[['latitude', 'longitude']].values
@@ -74,8 +74,8 @@ def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFr
     # Calculate distances between grid points and crime points
     distances = cdist(grid_points, crime_points)
     
-    # Calculate weights (inverse distance weighting)
-    weights = 1 / (distances ** 2 + 1e-10)  # Add small constant to avoid division by zero
+    # Calculate weights with stronger distance decay (using distance^4)
+    weights = 1 / (distances ** 4 + 1e-10)  # Add small constant to avoid division by zero
     weights = weights / weights.sum(axis=1, keepdims=True)
     
     # Calculate weighted crime density for each grid point
@@ -88,10 +88,13 @@ def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFr
         'weighted_crime': weighted_crime
     })
     
-    # Calculate color scale (0 to 1, where 0 is lowest crime and 1 is highest)
-    min_crime = result['weighted_crime'].min()
-    max_crime = result['weighted_crime'].max()
-    result['color_scale'] = (result['weighted_crime'] - min_crime) / (max_crime - min_crime)
+    # Apply log10 transformation for better color distribution
+    result['log_crime'] = np.log10(result['weighted_crime'] + 1)  # Add 1 to handle zeros
+    
+    # Calculate color scale
+    min_log = result['log_crime'].min()
+    max_log = result['log_crime'].max()
+    result['color_scale'] = (result['log_crime'] - min_log) / (max_log - min_log)
     
     return result
 
