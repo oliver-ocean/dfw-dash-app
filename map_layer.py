@@ -4,6 +4,8 @@ from typing import Dict, List
 from crime_stats_db import CrimeStatsDB
 from datetime import datetime, timedelta
 from crime_visualization import CrimeVisualization
+import dash_leaflet as dl
+import json
 
 class CrimeMapLayer:
     """Handles the crime data layer for the map"""
@@ -14,7 +16,39 @@ class CrimeMapLayer:
         
     def get_heatmap_data(self):
         """Get current heatmap data for visualization"""
-        return self.viz.get_heatmap_data()
+        data = self.viz.get_heatmap_data()
+        if data is None or data.empty:
+            return []
+            
+        # Convert to heatmap format
+        heatmap_data = []
+        for _, row in data.iterrows():
+            # Scale risk score to intensity (0-1)
+            intensity = row['risk_score']
+            if not pd.isna(intensity):
+                heatmap_data.append({
+                    'lat': row['latitude'],
+                    'lng': row['longitude'],
+                    'intensity': float(intensity)
+                })
+        
+        return dl.Heatmap(
+            points=heatmap_data,
+            options={
+                'radius': 25,  # Size of each point's influence
+                'blur': 15,    # Amount of blur
+                'maxZoom': 20,
+                'max': 1.0,    # Maximum intensity value
+                'minOpacity': 0.3,  # Minimum opacity
+                'gradient': {  # Custom color gradient
+                    0.0: '#00ff00',  # Green for safe areas
+                    0.4: '#ffff00',  # Yellow for moderate risk
+                    0.6: '#ff9900',  # Orange for higher risk
+                    0.8: '#ff0000',  # Red for high risk
+                    1.0: '#990000'   # Dark red for highest risk
+                }
+            }
+        )
     
     def get_location_details(self, lat: float, lon: float) -> dict:
         """Get detailed crime statistics for a location"""
@@ -31,18 +65,8 @@ class CrimeMapLayer:
 def create_crime_layer(resolution: int = 50):
     """Create the crime layer for the map"""
     layer = CrimeMapLayer(resolution=resolution)
-    
-    # Update data if needed
     layer.update_data()
-    
-    # Get heatmap data
-    heatmap_data = layer.get_heatmap_data()
-    
-    if heatmap_data is None or heatmap_data.empty:
-        print("No crime data available for map layer")
-        return []
-        
-    return heatmap_data.to_dict('records')
+    return layer.get_heatmap_data()
 
 def test_map_layer():
     """Test the map layer functionality"""

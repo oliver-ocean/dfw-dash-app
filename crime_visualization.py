@@ -178,8 +178,29 @@ class CrimeVisualization:
         self.db = CrimeStatsDB(grid_size=grid_size)
         
     def get_heatmap_data(self) -> pd.DataFrame:
-        """Get current heatmap data from the database"""
-        return self.db.get_current_heatmap_data()
+        """
+        Get current heatmap data from the database with proper normalization
+        
+        Returns:
+        --------
+        DataFrame with columns:
+        - latitude: float
+        - longitude: float
+        - risk_score: float (0-1 normalized)
+        """
+        data = self.db.get_current_heatmap_data()
+        if data is None or data.empty:
+            return pd.DataFrame()
+            
+        # Ensure risk scores are properly normalized to 0-1 range
+        min_risk = data['risk_score'].min()
+        max_risk = data['risk_score'].max()
+        if min_risk != max_risk:
+            data['risk_score'] = (data['risk_score'] - min_risk) / (max_risk - min_risk)
+        else:
+            data['risk_score'] = 0.5  # Default to middle value if all scores are the same
+            
+        return data
     
     def get_location_stats(self, lat: float, lon: float, radius: float = 0.02) -> dict:
         """Get crime statistics for a specific location"""
