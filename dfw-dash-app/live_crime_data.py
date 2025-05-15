@@ -35,17 +35,13 @@ def fetch_crime_data(limit=100):
     """
     url = "https://www.dallasopendata.com/resource/qv6i-rri7.json"
     
-    # Calculate date range for last 30 days
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
-    
-    params = {
-        "$limit": limit,
-        "$where": f"date_of_occurrence >= '{start_date.strftime('%Y-%m-%d')}' AND date_of_occurrence <= '{end_date.strftime('%Y-%m-%d')}'",
-        "$order": "date_of_occurrence DESC"
-    }
-    
     try:
+        # First try without date filtering
+        params = {
+            "$limit": limit,
+            "$order": "date_of_occurrence DESC"
+        }
+        
         response = requests.get(url, params=params)
         response.raise_for_status()  # Raise an exception for bad status codes
         
@@ -56,12 +52,13 @@ def fetch_crime_data(limit=100):
             
         data = standardize_column_names(data)
         
-        # Check if required columns exist
-        required_columns = ['latitude', 'longitude', 'nibrs_crime_category', 'date_of_occurrence']
-        missing_columns = [col for col in required_columns if col not in data.columns]
+        # Check if required columns exist for crime data specifically
+        required_columns = ['latitude', 'longitude']  # Minimum required columns
+        optional_columns = ['nibrs_crime_category', 'date_of_occurrence']  # Nice to have but not required
         
-        if missing_columns:
-            print(f"Warning: Missing required crime data columns: {missing_columns}")
+        missing_required = [col for col in required_columns if col not in data.columns]
+        if missing_required:
+            print(f"Warning: Missing required crime data columns: {missing_required}")
             print(f"Available columns: {data.columns.tolist()}")
             return create_empty_crime_df()
         
@@ -69,9 +66,12 @@ def fetch_crime_data(limit=100):
         data['latitude'] = pd.to_numeric(data['latitude'], errors='coerce')
         data['longitude'] = pd.to_numeric(data['longitude'], errors='coerce')
         
-        # Convert date if it exists
+        # Convert and filter date if the column exists
         if 'date_of_occurrence' in data.columns:
             data['date_of_occurrence'] = pd.to_datetime(data['date_of_occurrence'], errors='coerce')
+            # Filter last 30 days in Python instead of API query
+            cutoff_date = datetime.now() - timedelta(days=30)
+            data = data[data['date_of_occurrence'] >= cutoff_date]
         
         # Drop rows with missing required data
         data = data.dropna(subset=['latitude', 'longitude'])

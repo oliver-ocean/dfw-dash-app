@@ -3,11 +3,13 @@ from dash import html, dcc, Input, Output
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import pandas as pd
+import numpy as np
 
 from traffic_plot import render_traffic_chart
 from market_trends import render_market_trends_chart
 from live_crime_data import fetch_crime_data
 from live_traffic_data import fetch_traffic_data
+from data_processing import calculate_weighted_traffic, calculate_weighted_crime
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
@@ -16,59 +18,65 @@ server = app.server
 crime_df = fetch_crime_data()
 traffic_df = fetch_traffic_data()
 
+# Process data for visualization
+traffic_grid = calculate_weighted_traffic(traffic_df)
+crime_grid = calculate_weighted_crime(crime_df)
+
+def get_color(scale_value: float) -> str:
+    """Convert scale value (0-1) to color string"""
+    if pd.isna(scale_value):
+        return '#808080'  # Gray for missing data
+    
+    # For traffic: green (low) to red (high)
+    r = int(255 * scale_value)
+    g = int(255 * (1 - scale_value))
+    return f'rgb({r}, {g}, 0)'
+
+def get_crime_color(scale_value: float) -> str:
+    """Convert scale value (0-1) to color string for crime data"""
+    if pd.isna(scale_value):
+        return '#808080'  # Gray for missing data
+    
+    # Blue (low) to red (high) through purple
+    r = int(255 * scale_value)
+    b = int(255 * (1 - scale_value))
+    return f'rgb({r}, 0, {b})'
+
 # Create marker layers from live data
 def create_crime_markers():
-    if crime_df.empty:
+    if crime_grid.empty:
         return []
     
     markers = []
-    for _, row in crime_df.iterrows():
-        tooltip_text = ""
-        if 'nibrs_crime_category' in row and pd.notna(row['nibrs_crime_category']):
-            tooltip_text += str(row['nibrs_crime_category'])
-        if 'date_of_occurrence' in row and pd.notna(row['date_of_occurrence']):
-            if tooltip_text:
-                tooltip_text += " "
-            tooltip_text += f"({str(row['date_of_occurrence'])[:10]})"
-        
-        if not tooltip_text:
-            tooltip_text = "Crime Incident"
-            
+    for _, row in crime_grid.iterrows():
         markers.append(
-            dl.Marker(
-                position=[row['latitude'], row['longitude']],
-                children=dl.Tooltip(tooltip_text)
+            dl.CircleMarker(
+                center=[row['Latitude'], row['Longitude']],
+                radius=8,
+                color=get_crime_color(row['color_scale']),
+                fillOpacity=0.7,
+                weight=1,
+                children=dl.Tooltip(f"Crime Density: {row['weighted_crime']:.2f}")
             )
         )
     return markers
 
 def create_traffic_markers():
-    if traffic_df.empty:
+    if traffic_grid.empty:
         return []
     
     markers = []
-    for _, row in traffic_df.iterrows():
-        if pd.notna(row.get('Latitude')) and pd.notna(row.get('Longitude')):
-            tooltip_text = ""
-            if 'Road Name' in row and pd.notna(row['Road Name']):
-                tooltip_text += str(row['Road Name'])
-            if 'AADT' in row and pd.notna(row['AADT']):
-                if tooltip_text:
-                    tooltip_text += " — "
-                tooltip_text += f"AADT: {row['AADT']}"
-            
-            if not tooltip_text:
-                tooltip_text = "Traffic Point"
-                
-            markers.append(
-                dl.CircleMarker(
-                    center=[row['Latitude'], row['Longitude']],
-                    radius=5,
-                    color='red',
-                    fillOpacity=0.7,
-                    children=dl.Tooltip(tooltip_text)
-                )
+    for _, row in traffic_grid.iterrows():
+        markers.append(
+            dl.CircleMarker(
+                center=[row['Latitude'], row['Longitude']],
+                radius=8,
+                color=get_color(row['color_scale']),
+                fillOpacity=0.7,
+                weight=1,
+                children=dl.Tooltip(f"Traffic Level: {row['weighted_aadt']:,.0f} AADT")
             )
+        )
     return markers
 
 # Map layers
@@ -83,6 +91,19 @@ map_component = dl.Map(center=[32.9, -97.0], zoom=9, children=[
     price_layer,
     crime_layer
 ], style={'width': '100%', 'height': '600px'}, id="main-map")
+
+# Legend
+legend = html.Div([
+    html.H6("Legend"),
+    html.Div([
+        html.Span("Traffic: ", style={'font-weight': 'bold'}),
+        html.Span("Green = Low, Red = High")
+    ]),
+    html.Div([
+        html.Span("Crime: ", style={'font-weight': 'bold'}),
+        html.Span("Blue = Low, Red = High")
+    ])
+], style={'padding': '10px', 'background-color': 'white', 'border-radius': '5px'})
 
 # Toggle controls
 toggle_controls = dbc.Card([
@@ -109,7 +130,10 @@ charts_content = html.Div(id="charts-content")
 # Layout
 app.layout = dbc.Container([
     dbc.Row([dbc.Col(toggle_controls, width=12)]),
-    dbc.Row([dbc.Col(map_component, width=12)]),
+    dbc.Row([
+        dbc.Col(map_component, width=9),
+        dbc.Col(legend, width=3)
+    ]),
     dbc.Row([dbc.Col([tabs, charts_content], width=12)])
 ], fluid=True)
 

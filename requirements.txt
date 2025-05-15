@@ -1,5 +1,8 @@
-dash
-dash-bootstrap-components
-dash-leaflet
-pandas
-plotly
+dash==2.14.2
+dash-bootstrap-components==1.5.0
+dash-leaflet==1.0.11
+pandas==2.1.4
+numpy==1.26.3
+scipy==1.11.4
+plotly==5.18.0
+requests==2.31.0
