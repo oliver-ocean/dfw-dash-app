@@ -64,7 +64,7 @@ def calculate_weighted_traffic(df: pd.DataFrame, grid_size: int = 50) -> pd.Data
     
     return grid_df
 
-def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFrame:
+def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 30) -> pd.DataFrame:
     """
     Calculate weighted crime density for a grid of points covering the map area.
     Uses inverse distance weighting for interpolation with percentile-based color scaling.
@@ -105,17 +105,23 @@ def calculate_weighted_crime(df: pd.DataFrame, grid_size: int = 50) -> pd.DataFr
     # Convert to DataFrame for processing
     grid_df = pd.DataFrame(grid_cells)
     
-    # Count crimes at each location
-    crime_counts = df.groupby(['latitude', 'longitude']).size().reset_index(name='count')
+    # Count crimes at each location with time weighting
+    df['days_ago'] = (pd.Timestamp.now() - pd.to_datetime(df['date_of_occurrence'])).dt.days
+    df['time_weight'] = np.exp(-df['days_ago'] / 365)  # Exponential decay over a year
+    
+    crime_counts = df.groupby(['latitude', 'longitude']).agg({
+        'time_weight': 'sum'
+    }).reset_index()
+    
     crime_points = crime_counts[['latitude', 'longitude']].values
-    crime_values = crime_counts['count'].values
+    crime_values = crime_counts['time_weight'].values
     
     # Calculate distances between grid centers and crime points
     grid_centers = grid_df[['center_lat', 'center_lon']].values
     distances = cdist(grid_centers, crime_points)
     
-    # Calculate weights with stronger distance decay (using distance^4)
-    weights = 1 / (distances ** 4 + 1e-10)
+    # Calculate weights with stronger distance decay (using distance^3 for better performance)
+    weights = 1 / (distances ** 3 + 1e-10)
     weights = weights / weights.sum(axis=1, keepdims=True)
     
     # Calculate weighted crime density for each grid cell

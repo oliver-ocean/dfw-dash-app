@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import pandas as pd
 import numpy as np
+from crime_plot import render_crime_chart
 
 from traffic_plot import render_traffic_chart
 from market_trends import render_market_trends_chart
@@ -25,18 +26,18 @@ crime_grid = calculate_weighted_crime(crime_df)
 def get_color(scale_value: float, data_type: str) -> str:
     """Convert scale value (0-1) to color string based on data type"""
     if pd.isna(scale_value):
-        return 'rgba(128, 128, 128, 0.5)'  # Semi-transparent gray for missing data
+        return 'rgba(128, 128, 128, 0.1)'  # Very transparent gray for missing data
     
     if data_type == 'traffic':
         # For traffic: green (low) to red (high)
         r = int(255 * scale_value)
         g = int(255 * (1 - scale_value))
-        return f'rgba({r}, {g}, 0, 0.5)'  # 50% transparency
+        opacity = 0.2 + (scale_value * 0.5)  # Opacity increases with value
+        return f'rgba({r}, {g}, 0, {opacity})'
     else:  # crime
-        # Blue (low) to red (high) through purple
-        r = int(255 * scale_value)
-        b = int(255 * (1 - scale_value))
-        return f'rgba({r}, 0, {b}, 0.5)'  # 50% transparency
+        # Red gradient with varying opacity
+        opacity = 0.1 + (scale_value * 0.6)  # More transparent for low values
+        return f'rgba(255, 0, 0, {opacity})'
 
 def create_traffic_overlay():
     if traffic_grid.empty:
@@ -45,13 +46,14 @@ def create_traffic_overlay():
     rectangles = []
     for _, row in traffic_grid.iterrows():
         sw_corner, ne_corner = row['cell_bounds']
+        color = get_color(row['color_scale'], 'traffic')
         rectangles.append(
             dl.Rectangle(
                 bounds=[sw_corner, ne_corner],
-                color=get_color(row['color_scale'], 'traffic'),
-                fillColor=get_color(row['color_scale'], 'traffic'),
-                weight=1,
-                fillOpacity=0.5,
+                color='transparent',  # No border
+                fillColor=color,
+                weight=0,
+                fillOpacity=1,  # We control opacity in the color itself
                 children=[
                     dl.Tooltip(f"Traffic Level: {row['weighted_aadt']:,.0f} AADT")
                 ]
@@ -66,13 +68,14 @@ def create_crime_overlay():
     rectangles = []
     for _, row in crime_grid.iterrows():
         sw_corner, ne_corner = row['cell_bounds']
+        color = get_color(row['color_scale'], 'crime')
         rectangles.append(
             dl.Rectangle(
                 bounds=[sw_corner, ne_corner],
-                color=get_color(row['color_scale'], 'crime'),
-                fillColor=get_color(row['color_scale'], 'crime'),
-                weight=1,
-                fillOpacity=0.5,
+                color='transparent',  # No border
+                fillColor=color,
+                weight=0,
+                fillOpacity=1,  # We control opacity in the color itself
                 children=[
                     dl.Tooltip(f"Crime Density: {row['weighted_crime']:.2f}")
                 ]
@@ -90,7 +93,7 @@ map_component = dl.Map(
     center=[32.78, -97.15],
     zoom=10,
     children=[
-        dl.TileLayer(),
+        dl.TileLayer(url='https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png'),
         traffic_layer,
         price_layer,
         crime_layer
@@ -104,34 +107,35 @@ legend = html.Div([
     html.H6("Legend"),
     html.Div([
         html.Span("Traffic: ", style={'font-weight': 'bold'}),
-        html.Span("Green = Low, Red = High")
+        html.Span("Green (Low) → Red (High)")
     ]),
     html.Div([
         html.Span("Crime: ", style={'font-weight': 'bold'}),
-        html.Span("Blue = Low, Red = High")
+        html.Span("Light Red (Low) → Dark Red (High)")
     ])
 ], style={'padding': '10px', 'background-color': 'white', 'border-radius': '5px'})
 
-# Toggle controls
-toggle_controls = dbc.Card([
+# Layer selector dropdown
+layer_selector = dbc.Card([
     html.H5("Select Data Layer"),
-    dbc.RadioItems(
+    dcc.Dropdown(
+        id="layer-toggle",
         options=[
-            {"label": "Traffic", "value": "traffic"},
-            {"label": "Price & Lease", "value": "price"},
-            {"label": "Crime", "value": "crime"}
+            {"label": "Traffic Density", "value": "traffic"},
+            {"label": "Property Values", "value": "price"},
+            {"label": "Crime Density", "value": "crime"}
         ],
         value="traffic",
-        id="layer-toggle",
-        inline=True
+        clearable=False
     ),
 ], body=True)
 
 # Tabs for charts
-tabs = dcc.Tabs(id="charts-tabs", value="traffic", children=[
+tabs = dcc.Tabs(id="charts-tabs", children=[
     dcc.Tab(label="Traffic Patterns", value="traffic"),
-    dcc.Tab(label="Market Trends", value="market")
-])
+    dcc.Tab(label="Market Trends", value="market"),
+    dcc.Tab(label="Crime Trends", value="crime")
+], value="traffic")
 charts_content = html.Div(id="charts-content")
 
 # Store clicked location
@@ -140,7 +144,7 @@ clicked_location = dcc.Store(id='clicked-location', data={'lat': None, 'lon': No
 # Layout
 app.layout = dbc.Container([
     clicked_location,
-    dbc.Row([dbc.Col(toggle_controls, width=12)]),
+    dbc.Row([dbc.Col(layer_selector, width=12)]),
     dbc.Row([
         dbc.Col(map_component, width=9),
         dbc.Col(legend, width=3)
@@ -175,7 +179,7 @@ def store_clicked_location(click_latLng):
     Input("clicked-location", "data"),
     Input("layer-toggle", "value")
 )
-def update_charts(tab, clicked_location, active_layers):
+def update_charts(tab, clicked_location, active_layer):
     ctx = dash.callback_context
     if not ctx.triggered:
         return "No data selected"
@@ -183,9 +187,11 @@ def update_charts(tab, clicked_location, active_layers):
     lat = clicked_location.get('lat')
     lon = clicked_location.get('lon')
     
-    if tab == "traffic" and "traffic" in active_layers:
+    if tab == "traffic" and active_layer == "traffic":
         return render_traffic_chart(clicked_lat=lat, clicked_lon=lon)
-    elif tab == "market" and "price" in active_layers:
+    elif tab == "market" and active_layer == "price":
         return render_market_trends_chart()
+    elif tab == "crime" and active_layer == "crime":
+        return render_crime_chart(clicked_lat=lat, clicked_lon=lon)
     else:
         return "Please select a location on the map and ensure the corresponding layer is active" 
