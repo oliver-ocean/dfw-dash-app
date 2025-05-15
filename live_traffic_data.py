@@ -27,17 +27,28 @@ def fetch_traffic_data():
             print(f"Available columns: {df.columns.tolist()}")
             return pd.DataFrame()
         
-        # Filter for Dallas and Tarrant counties
+        # Filter for Dallas and Tarrant counties and print counts
         if 'County_Name' in df.columns:
-            df = df[df['County_Name'].str.contains('Dallas|Tarrant', case=False, na=False)]
+            print("Total records before filtering:", len(df))
+            dallas_mask = df['County_Name'].str.contains('Dallas', case=False, na=False)
+            tarrant_mask = df['County_Name'].str.contains('Tarrant', case=False, na=False)
+            df = df[dallas_mask | tarrant_mask]
+            print("Records after county filtering:", len(df))
+            print("Dallas County records:", sum(dallas_mask))
+            print("Tarrant County records:", sum(tarrant_mask))
         
         # Convert coordinates to numeric, handling potential string formats
         for col in ['Latitude', 'Longitude']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
+        # Print coordinate ranges for debugging
+        print("Latitude range:", df['Latitude'].min(), "to", df['Latitude'].max())
+        print("Longitude range:", df['Longitude'].min(), "to", df['Longitude'].max())
+        
         # Drop rows with missing required data
         df = df.dropna(subset=['Road Name', 'AADT', 'Latitude', 'Longitude'])
+        print("Final record count after cleaning:", len(df))
         
         return df
     except Exception as e:
