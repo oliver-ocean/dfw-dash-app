@@ -99,27 +99,27 @@ def update_visible_layers(crime_clicks, traffic_clicks):
 
 @app.callback(
     Output("analysis-content", "children"),
-    [Input("main-map", "click_lat_lng"),
-     Input("show-crime", "n_clicks"),
-     Input("show-traffic", "n_clicks")]
+    [Input("main-map", "click_lat_lng")],
+    [State("show-crime", "n_clicks"),
+     State("show-traffic", "n_clicks")]
 )
 def update_analysis(click_lat_lng, crime_clicks, traffic_clicks):
     if click_lat_lng is None:
-        return html.Div("Click a location on the map to see detailed analysis")
-    
-    ctx = dash.callback_context
-    if not ctx.triggered:
-        return html.Div("Select a data type and click on the map")
-    
-    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        return html.Div("Click a location on the map to see detailed analysis.")
+
     lat, lon = click_lat_lng
-    
-    if button_id == "show-crime" or (button_id == "main-map" and crime_clicks > traffic_clicks):
+
+    # n_clicks can be None if the button has never been clicked and not initialized with n_clicks=0.
+    # However, our buttons are initialized with n_clicks=0.
+    crime_n = crime_clicks if crime_clicks is not None else 0
+    traffic_n = traffic_clicks if traffic_clicks is not None else 0
+
+    # If crime button has more or equal clicks, or if both are 0 (initial state), show crime analysis.
+    # This makes crime the default analysis, aligning with crime_heatmap being the default visible layer.
+    if crime_n >= traffic_n:
         return render_crime_chart(lat, lon)
-    elif button_id == "show-traffic" or (button_id == "main-map" and traffic_clicks > crime_clicks):
+    else:
         return render_traffic_chart(lat, lon)
-    
-    return html.Div("Select a data type to view analysis")
 
 if __name__ == '__main__':
     app.run_server(debug=True) 

@@ -35,11 +35,11 @@ class CrimeMapLayer:
         return dl.Heatmap(
             points=heatmap_data,
             options={
-                'radius': 60,  # Size of each point's influence
-                'blur': 40,    # Amount of blur
+                'radius': 120,  # Size of each point's influence
+                'blur': 80,    # Amount of blur
                 'maxZoom': 20,
                 'max': 1.0,    # Maximum intensity value
-                'minOpacity': 0.1,  # Minimum opacity
+                'minOpacity': 0.05,  # Minimum opacity
                 'gradient': {  # Custom color gradient
                     0.0: '#00ff00',  # Green for safe areas
                     0.4: '#ffff00',  # Yellow for moderate risk
